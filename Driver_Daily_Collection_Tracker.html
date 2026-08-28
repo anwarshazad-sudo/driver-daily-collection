@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Driver Daily Collection</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f6f8;color:#17202a}
+header{background:#111827;color:white;padding:18px 16px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:21px}header p{margin:5px 0 0;color:#cbd5e1;font-size:13px}
+.container{max-width:900px;margin:auto;padding:14px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.card{background:white;border-radius:12px;padding:14px;box-shadow:0 2px 8px #0000000d}.label{font-size:12px;color:#64748b}.value{font-size:21px;font-weight:bold;margin-top:5px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.toolbar input,.toolbar button,.addbox input{padding:11px;border:1px solid #d1d5db;border-radius:9px;font-size:14px}
+.toolbar input{flex:1;min-width:160px}.toolbar button,.addbox button{background:#111827;color:white;border:0;cursor:pointer}
+.addbox{display:none;background:white;padding:12px;border-radius:12px;margin-bottom:12px;box-shadow:0 2px 8px #0000000d}.addbox.show{display:flex;gap:8px;flex-wrap:wrap}.addbox input{flex:1;min-width:180px}
+table{width:100%;border-collapse:separate;border-spacing:0;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px #0000000d}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid #eef2f7;font-size:14px}th{background:#f8fafc;font-size:12px;color:#64748b}
+.status{border:0;border-radius:20px;padding:8px 12px;font-weight:bold;cursor:pointer}.paid{background:#dcfce7;color:#166534}.pending{background:#fef3c7;color:#92400e}
+.del{border:0;background:#fee2e2;color:#991b1b;border-radius:7px;padding:7px;cursor:pointer}
+.empty{text-align:center;padding:30px;color:#64748b}
+.note{font-size:12px;color:#64748b;margin:10px 2px}
+@media(max-width:600px){.cards{grid-template-columns:1fr 1fr}.cards .card:last-child{grid-column:span 2}th:nth-child(3),td:nth-child(3){display:none}th,td{padding:10px 7px;font-size:13px}.value{font-size:18px}}
+</style>
+</head>
+<body>
+<header><h1>🚗 Driver Daily Collection</h1><p id="dateText"></p></header>
+<div class="container">
+  <div class="cards">
+    <div class="card"><div class="label">Daily Rent / Driver</div><div class="value" id="daily">Rs. 0</div></div>
+    <div class="card"><div class="label">Collected Today</div><div class="value" id="collected">Rs. 0</div></div>
+    <div class="card"><div class="label">Pending Today</div><div class="value" id="pending">Rs. 0</div></div>
+  </div>
+
+  <div class="toolbar">
+    <input id="search" placeholder="Search driver..." oninput="render()">
+    <button onclick="toggleAdd()">＋ Add Driver</button>
+  </div>
+
+  <div class="addbox" id="addbox">
+    <input id="name" placeholder="Driver name">
+    <button onclick="addDriver()">Save Driver</button>
+  </div>
+
+  <div class="note">Monthly rent: <b>Rs. 85,000</b> · Daily rent is automatically calculated according to the current month's number of days.</div>
+
+  <table><thead><tr><th>Driver</th><th>Daily Rent</th><th>Payment Time</th><th>Status</th><th></th></tr></thead>
+  <tbody id="rows"></tbody></table>
+</div>
+
+<script>
+const RENT=85000;
+const KEY='driver_collection_v1';
+let data=JSON.parse(localStorage.getItem(KEY)||'{"drivers":[],"payments":{}}');
+
+function pad(n){return String(n).padStart(2,'0')}
+function todayKey(){let d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function daysInMonth(){let d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,0).getDate()}
+function dailyRent(){return Math.round(RENT/daysInMonth())}
+function money(n){return 'Rs. '+Number(n).toLocaleString('en-PK')}
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function toggleAdd(){document.getElementById('addbox').classList.toggle('show');document.getElementById('name').focus()}
+function addDriver(){
+ let n=document.getElementById('name').value.trim(); if(!n)return alert('Driver name enter karein.');
+ data.drivers.push({id:Date.now(),name:n}); document.getElementById('name').value=''; save(); render();
+}
+function removeDriver(id){
+ if(confirm('Is driver ko delete karna hai?')){data.drivers=data.drivers.filter(x=>x.id!==id);save();render()}
+}
+function togglePayment(id){
+ let k=todayKey(), key=k+'_'+id;
+ if(data.payments[key]) delete data.payments[key];
+ else data.payments[key]={time:new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})};
+ save();render();
+}
+function render(){
+ let d=new Date(), k=todayKey(), dr=dailyRent(), search=document.getElementById('search').value.toLowerCase();
+ document.getElementById('dateText').textContent=d.toLocaleDateString('en-PK',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+ document.getElementById('daily').textContent=money(dr);
+ let list=data.drivers.filter(x=>x.name.toLowerCase().includes(search));
+ let paidCount=0; data.drivers.forEach(x=>{if(data.payments[k+'_'+x.id])paidCount++});
+ document.getElementById('collected').textContent=money(paidCount*dr);
+ document.getElementById('pending').textContent=money((data.drivers.length-paidCount)*dr);
+ document.getElementById('rows').innerHTML=list.length?list.map(x=>{
+   let p=data.payments[k+'_'+x.id];
+   return `<tr><td><b>${esc(x.name)}</b></td><td>${money(dr)}</td><td>${p?p.time:'—'}</td>
+   <td><button class="status ${p?'paid':'pending'}" onclick="togglePayment(${x.id})">${p?'✓ Paid':'Pending'}</button></td>
+   <td><button class="del" onclick="removeDriver(${x.id})">Delete</button></td></tr>`;
+ }).join(''):`<tr><td colspan="5" class="empty">No drivers added yet. Tap “＋ Add Driver”.</td></tr>`;
+}
+function esc(s){return s.replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+render();
+</script>
+</body>
+</html>
